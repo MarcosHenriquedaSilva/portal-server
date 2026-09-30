@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Portal</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --portal-glow: rgba(120, 200, 255, 0.15);
+      --portal-border: rgba(140, 210, 255, 0.25);
+      --status-connected: #4ade80;
+      --status-waiting: #facc15;
+      --status-error: #f87171;
+      --overlay-bg: rgba(0, 0, 0, 0.72);
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    /* ── VÍDEO REMOTO: ocupa toda a tela ── */
+    #remote-video {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #0a0a0a;
+      transition: opacity 0.6s ease;
+    }
+
+    /* Estado: aguardando conexão */
+    #remote-video.waiting {
+      opacity: 0;
+    }
+
+    /* ── VÍDEO LOCAL: canto inferior direito ── */
+    #local-video {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 140px;
+      height: 200px;
+      object-fit: cover;
+      border-radius: 12px;
+      border: 1.5px solid var(--portal-border);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.06),
+        0 8px 32px rgba(0,0,0,0.6),
+        0 0 24px var(--portal-glow);
+      z-index: 10;
+      transition: opacity 0.4s ease, transform 0.3s ease;
+      cursor: pointer;
+      /* Espelha a câmera para parecer natural */
+      transform: scaleX(-1);
+    }
+
+    #local-video:hover {
+      transform: scaleX(-1) scale(1.04);
+    }
+
+    /* ── TELA DE ESPERA ── */
+    #waiting-screen {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      background: radial-gradient(ellipse at center, #0d1117 0%, #000 100%);
+      z-index: 20;
+      transition: opacity 0.8s ease;
+    }
+
+    #waiting-screen.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .portal-ring {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: 2px solid var(--portal-border);
+      box-shadow:
+        0 0 40px var(--portal-glow),
+        inset 0 0 40px var(--portal-glow);
+      animation: pulse-ring 2.4s ease-in-out infinite;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .portal-ring-inner {
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      border: 1px solid rgba(140, 210, 255, 0.15);
+      animation: pulse-ring 2.4s ease-in-out infinite reverse;
+    }
+
+    @keyframes pulse-ring {
+      0%, 100% { transform: scale(1); opacity: 0.6; }
+      50% { transform: scale(1.06); opacity: 1; }
+    }
+
+    #waiting-text {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 14px;
+      font-weight: 400;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* ── STATUS INDICATOR (canto superior esquerdo) ── */
+    #status {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: var(--overlay-bg);
+      border-radius: 100px;
+      backdrop-filter: blur(8px);
+      z-index: 30;
+      opacity: 1;
+      transition: opacity 0.6s ease 3s; /* desaparece após 3s de inativo */
+    }
+
+    #status:hover {
+      opacity: 1 !important;
+      transition: opacity 0.1s;
+    }
+
+    #status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--status-waiting);
+      transition: background 0.4s ease;
+    }
+
+    #status-dot.connected { background: var(--status-connected); }
+    #status-dot.error { background: var(--status-error); }
+    #status-dot.waiting { 
+      background: var(--status-waiting);
+      animation: blink 1.6s ease infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    #status-label {
+      color: rgba(255,255,255,0.7);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+
+    /* ── PAINEL DE CONFIGURAÇÃO ── */
+    #config-panel {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.92);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+    }
+
+    #config-panel.hidden {
+      display: none;
+    }
+
+    .config-box {
+      background: #111;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 40px;
+      width: min(400px, 90vw);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .config-box h2 {
+      color: #fff;
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+    }
+
+    .config-box p {
+      color: rgba(255,255,255,0.4);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .config-box label {
+      color: rgba(255,255,255,0.6);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .config-box input {
+      width: 100%;
+      padding: 12px 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+      margin-top: 8px;
+    }
+
+    .config-box input:focus {
+      border-color: rgba(140, 210, 255, 0.4);
+    }
+
+    .config-box input::placeholder {
+      color: rgba(255,255,255,0.2);
+    }
+
+    .btn-primary {
+      padding: 14px;
+      background: rgba(140, 210, 255, 0.15);
+      border: 1px solid var(--portal-border);
+      border-radius: 8px;
+      color: rgba(200, 235, 255, 0.9);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      letter-spacing: 0.04em;
+    }
+
+    .btn-primary:hover {
+      background: rgba(140, 210, 255, 0.22);
+    }
+
+    .btn-primary:active {
+      transform: scale(0.98);
+    }
+
+    /* ── CONTROLES (aparecem no hover) ── */
+    #controls {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    body:hover #controls {
+      opacity: 1;
+    }
+
+    .ctrl-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--overlay-bg);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.8);
+      backdrop-filter: blur(8px);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, transform 0.15s;
+      font-size: 18px;
+    }
+
+    .ctrl-btn:hover {
+      background: rgba(255,255,255,0.1);
+      transform: scale(1.08);
+    }
+
+    .ctrl-btn.muted {
+      background: rgba(248, 113, 113, 0.2);
+      border-color: rgba(248, 113, 113, 0.3);
+      color: #f87171;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Configuração inicial -->
+  <div id="config-panel">
+    <div class="config-box">
+      <h2>Portal</h2>
+      <p>Informe o endereço do servidor de sinalização para conectar os dois dispositivos.</p>
+
+      <div>
+        <label>Endereço do servidor (WebSocket)</label>
+        <input
+          type="text"
+          id="server-url"
+          placeholder="ws://localhost:3000"
+          value="ws://localhost:3000"
+        />
+      </div>
+
+      <button class="btn-primary" onclick="startPortal()">Abrir Portal</button>
+    </div>
+  </div>
+
+  <!-- Tela de espera -->
+  <div id="waiting-screen">
+    <div class="portal-ring">
+      <div class="portal-ring-inner"></div>
+    </div>
+    <span id="waiting-text">Aguardando outro dispositivo...</span>
+  </div>
+
+  <!-- Vídeos -->
+  <video id="remote-video" autoplay playsinline class="waiting"></video>
+  <video id="local-video" autoplay playsinline muted></video>
+
+  <!-- Status -->
+  <div id="status">
+    <div id="status-dot" class="waiting"></div>
+    <span id="status-label">Conectando...</span>
+  </div>
+
+  <!-- Controles -->
+  <div id="controls">
+    <button class="ctrl-btn" id="btn-mic" title="Microfone" onclick="toggleMic()">🎙️</button>
+    <button class="ctrl-btn" id="btn-cam" title="Câmera" onclick="toggleCam()">📷</button>
+  </div>
+
+  <script>
+    // ── Configuração de ICE Servers (STUN gratuito do Google) ──
+    // Para uso em redes distintas, adicionar um servidor TURN se necessário.
+    const ICE_CONFIG = {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+      ],
+    };
+
+    // ── Estado ──
+    let ws = null;
+    let pc = null;           // RTCPeerConnection
+    let localStream = null;
+    let isInitiator = false; // Peer A inicia a oferta
+    let micEnabled = true;
+    let camEnabled = true;
+
+    // ── Elementos ──
+    const configPanel   = document.getElementById("config-panel");
+    const waitingScreen = document.getElementById("waiting-screen");
+    const waitingText   = document.getElementById("waiting-text");
+    const remoteVideo   = document.getElementById("remote-video");
+    const localVideo    = document.getElementById("local-video");
+    const statusDot     = document.getElementById("status-dot");
+    const statusLabel   = document.getElementById("status-label");
+
+    // ──────────────────────────────────────────────────────────
+    // 1. INÍCIO: solicita câmera/microfone e conecta ao servidor
+    // ──────────────────────────────────────────────────────────
+    async function startPortal() {
+      const url = document.getElementById("server-url").value.trim();
+      if (!url) return;
+
+      configPanel.classList.add("hidden");
+      setStatus("waiting", "Acessando câmera...");
+
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
+        localVideo.srcObject = localStream;
+      } catch (err) {
+        setStatus("error", "Câmera negada");
+        alert("Permita o acesso à câmera e microfone para usar o Portal.");
+        configPanel.classList.remove("hidden");
+        return;
+      }
+
+      connectSignaling(url);
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // 2. SINALIZAÇÃO: WebSocket com o servidor Node.js
+    // ──────────────────────────────────────────────────────────
+    function connectSignaling(url) {
+      setStatus("waiting", "Conectando ao servidor...");
+      ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        setStatus("waiting", "Aguardando outro dispositivo...");
+        console.log("[ws] conectado ao servidor de sinalização");
+      };
+
+      ws.onmessage = async (event) => {
+        const msg = JSON.parse(event.data);
+        console.log("[ws] recebido:", msg.type);
+
+        switch (msg.type) {
+          case "welcome":
+            // Peer A (peerId === "A") vai iniciar a oferta quando o segundo entrar
+            isInitiator = msg.peerId === "A";
+            if (msg.peerCount === 2 && isInitiator) {
+              // Já há dois peers — inicia imediatamente
+              await createPeerConnection();
+              await sendOffer();
+            }
+            break;
+
+          case "peer-joined":
+            // Peer B entrou: peer A recebe este aviso e inicia a oferta
+            if (isInitiator) {
+              await createPeerConnection();
+              await sendOffer();
+            }
+            break;
+
+          case "offer":
+            await createPeerConnection();
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            send({ type: "answer", sdp: answer });
+            break;
+
+          case "answer":
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+            break;
+
+          case "ice-candidate":
+            if (pc && msg.candidate) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+              } catch (e) {
+                console.warn("[ice] erro ao adicionar candidato:", e);
+              }
+            }
+            break;
+
+          case "peer-left":
+            setStatus("waiting", "Outro dispositivo desconectou");
+            remoteVideo.classList.add("waiting");
+            waitingText.textContent = "Conexão encerrada. Aguardando reconexão...";
+            waitingScreen.classList.remove("hidden");
+            if (pc) { pc.close(); pc = null; }
+            break;
+
+          case "error":
+            setStatus("error", msg.message || "Erro no servidor");
+            break;
+        }
+      };
+
+      ws.onclose = () => {
+        setStatus("error", "Servidor desconectado");
+        console.log("[ws] conexão com servidor encerrada");
+      };
+
+      ws.onerror = (err) => {
+        setStatus("error", "Erro de conexão");
+        console.error("[ws] erro:", err);
+      };
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // 3. WebRTC: criação do peer connection e streams
+    // ──────────────────────────────────────────────────────────
+    async function createPeerConnection() {
+      if (pc) return;
+
+      pc = new RTCPeerConnection(ICE_CONFIG);
+
+      // Adiciona trilhas locais ao peer connection
+      localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+
+      // Recebe stream remoto
+      pc.ontrack = (event) => {
+        console.log("[webrtc] stream remoto recebido");
+        remoteVideo.srcObject = event.streams[0];
+        remoteVideo.classList.remove("waiting");
+        waitingScreen.classList.add("hidden");
+        setStatus("connected", "Portal ativo");
+      };
+
+      // Envia ICE candidates para o servidor repassar ao outro peer
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          send({ type: "ice-candidate", candidate: event.candidate });
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        console.log("[webrtc] ICE state:", pc.iceConnectionState);
+        if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+          setStatus("error", "Conexão perdida");
+        }
+        if (pc.iceConnectionState === "connected") {
+          setStatus("connected", "Portal ativo");
+        }
+      };
+    }
+
+    async function sendOffer() {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      send({ type: "offer", sdp: offer });
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // 4. CONTROLES
+    // ──────────────────────────────────────────────────────────
+    function toggleMic() {
+      micEnabled = !micEnabled;
+      localStream.getAudioTracks().forEach((t) => (t.enabled = micEnabled));
+      const btn = document.getElementById("btn-mic");
+      btn.classList.toggle("muted", !micEnabled);
+      btn.textContent = micEnabled ? "🎙️" : "🔇";
+    }
+
+    function toggleCam() {
+      camEnabled = !camEnabled;
+      localStream.getVideoTracks().forEach((t) => (t.enabled = camEnabled));
+      const btn = document.getElementById("btn-cam");
+      btn.classList.toggle("muted", !camEnabled);
+      btn.textContent = camEnabled ? "📷" : "🚫";
+      localVideo.style.opacity = camEnabled ? "1" : "0.3";
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // 5. UTILITÁRIOS
+    // ──────────────────────────────────────────────────────────
+    function send(msg) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(msg));
+      }
+    }
+
+    function setStatus(state, label) {
+      statusDot.className = state;
+      statusLabel.textContent = label;
+    }
+
+    // Oculta status automaticamente após 5s de "Portal ativo"
+    let statusTimeout;
+    const observer = new MutationObserver(() => {
+      if (statusLabel.textContent === "Portal ativo") {
+        clearTimeout(statusTimeout);
+        statusTimeout = setTimeout(() => {
+          document.getElementById("status").style.opacity = "0";
+        }, 5000);
+      } else {
+        document.getElementById("status").style.opacity = "1";
+      }
+    });
+    observer.observe(statusLabel, { childList: true, characterData: true, subtree: true });
+  </script>
+</body>
+</html>
