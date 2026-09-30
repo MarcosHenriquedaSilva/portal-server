@@ -66,7 +66,7 @@ wss.on("connection", (ws) => {
   });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`\n🔵 Portal HTTPS rodando`);
   console.log(`   Notebook → https://localhost:${PORT}/portal.html`);
   console.log(`   iPad     → https://192.168.0.13:${PORT}/portal.html`);
