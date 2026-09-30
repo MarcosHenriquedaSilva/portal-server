@@ -1,14 +1,11 @@
 const WebSocket = require("ws");
-const https = require("https");
+const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
 
-const server = https.createServer({
-  key: fs.readFileSync(path.join(__dirname, "192.168.0.13+2-key.pem")),
-  cert: fs.readFileSync(path.join(__dirname, "192.168.0.13+2.pem")),
-}, (req, res) => {
+const server = http.createServer((req, res) => {
   if (req.url === "/" || req.url === "/portal.html") {
     const filePath = path.join(__dirname, "portal.html");
     fs.readFile(filePath, (err, data) => {
@@ -67,8 +64,6 @@ wss.on("connection", (ws) => {
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`\n🔵 Portal HTTPS rodando`);
-  console.log(`   Notebook → https://localhost:${PORT}/portal.html`);
-  console.log(`   iPad     → https://192.168.0.13:${PORT}/portal.html`);
-  console.log(`   WebSocket → wss://192.168.0.13:${PORT}\n`);
+  console.log(`\n🔵 Portal rodando na porta ${PORT}`);
+  console.log(`   Acesse: https://portal-server-production-3e09.up.railway.app/portal.html\n`);
 });
